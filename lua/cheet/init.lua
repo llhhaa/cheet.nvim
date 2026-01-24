@@ -117,9 +117,9 @@ local function build_header(buf, cs_data)
     title ..
     string.rep(' ', math.ceil((WIDTH - 2 - #title) / 2)))
 
-  buf:add('+' .. string.rep('=', WIDTH - 2) .. '+', 'CheatHeader')
-  buf:add(header_line, 'CheatHeader')
-  buf:add('+' .. string.rep('=', WIDTH - 2) .. '+', 'CheatHeader')
+  buf:add('+' .. string.rep('=', WIDTH - 2) .. '+', 'HlHeader')
+  buf:add(header_line, 'HlHeader')
+  buf:add('+' .. string.rep('=', WIDTH - 2) .. '+', 'HlHeader')
   buf:add('')
 end
 
@@ -129,13 +129,13 @@ local function build_plugins_section(buf, entries)
     local e1 = entries[i]
     local e2 = entries[i + 1]
 
-    local left = string.format('  %-14s %s', e1.name, e1.desc or '')
-    local right = e2 and string.format('%-14s %s', e2.name, e2.desc or '') or ''
+    local left = string.format('  %-14s %s', e1.key, e1.desc or '')
+    local right = e2 and string.format('%-14s %s', e2.key, e2.desc or '') or ''
 
     buf:add(left .. string.rep(' ', col_width - #left) .. right)
-    buf:hl('CheatPlugin', 2, 2 + #e1.name)
+    buf:hl('HlPlugin', 2, 2 + #e1.key)
     if e2 then
-      buf:hl('CheatPlugin', col_width, col_width + #e2.name)
+      buf:hl('HlPlugin', col_width, col_width + #e2.key)
     end
   end
 end
@@ -143,7 +143,7 @@ end
 local function build_settings_section(buf, entries)
   local parts = {}
   for _, entry in ipairs(entries) do
-    table.insert(parts, { label = entry.label, value = entry.value })
+    table.insert(parts, { key = entry.key, desc = entry.desc })
   end
 
   for i = 1, #parts, 3 do
@@ -154,16 +154,16 @@ local function build_settings_section(buf, entries)
     for j = 0, 2 do
       local p = parts[i + j]
       if p then
-        local part = p.label .. ': ' .. p.value
+        local part = p.key .. ': ' .. p.desc
         table.insert(line_parts, part)
-        table.insert(col_positions, { value_start = col + #p.label + 2, value_len = #p.value })
+        table.insert(col_positions, { value_start = col + #p.key + 2, value_len = #p.desc })
         col = col + #part + 4
       end
     end
 
     buf:add('  ' .. table.concat(line_parts, '    '))
     for _, pos in ipairs(col_positions) do
-      buf:hl('CheatValue', pos.value_start, pos.value_start + pos.value_len)
+      buf:hl('HlValue', pos.value_start, pos.value_start + pos.value_len)
     end
   end
 end
@@ -176,10 +176,10 @@ local function build_keybindings_section(buf, entries)
     local note = entry.note and (' ' .. entry.note) or ''
 
     buf:add(string.format('  %-18s    %s%s%s', key, prefix, desc, note))
-    buf:hl('CheatKey', 2, 2 + #key)
+    buf:hl('HlKey', 2, 2 + #key)
 
     if entry.note then
-      buf:hl('CheatDim', buf:last_len() - #entry.note, buf:last_len())
+      buf:hl('HlDim', buf:last_len() - #entry.note, buf:last_len())
     end
   end
 end
@@ -192,7 +192,7 @@ local function build_content(cs_data)
 
   for _, section in ipairs(cs_data.sections) do
     local section_header = '--- ' .. section.name .. ' '
-    buf:add(section_header .. string.rep('-', WIDTH - #section_header), 'CheatSection')
+    buf:add(section_header .. string.rep('-', WIDTH - #section_header), 'HlSection')
 
     if section.type == 'plugins' then
       build_plugins_section(buf, section.entries)
@@ -206,19 +206,19 @@ local function build_content(cs_data)
   end
 
   local footer = 'Press / to search, <Esc> or q to close'
-  buf:add(string.rep(' ', math.floor((WIDTH - #footer) / 2)) .. footer, 'CheatDim')
+  buf:add(string.rep(' ', math.floor((WIDTH - #footer) / 2)) .. footer, 'HlDim')
 
   return buf:get()
 end
 
 -- Define highlight groups
 local function setup_highlights()
-  vim.api.nvim_set_hl(0, 'CheatHeader', { fg = '#5fafaf', bold = true })
-  vim.api.nvim_set_hl(0, 'CheatSection', { fg = '#d7af5f', bold = true })
-  vim.api.nvim_set_hl(0, 'CheatKey', { fg = '#5faf5f', bold = true })
-  vim.api.nvim_set_hl(0, 'CheatPlugin', { fg = '#af87d7' })
-  vim.api.nvim_set_hl(0, 'CheatValue', { fg = '#5fafaf' })
-  vim.api.nvim_set_hl(0, 'CheatDim', { fg = '#808080' })
+  vim.api.nvim_set_hl(0, 'HlHeader', { fg = '#5fafaf', bold = true })
+  vim.api.nvim_set_hl(0, 'HlSection', { fg = '#d7af5f', bold = true })
+  vim.api.nvim_set_hl(0, 'HlKey', { fg = '#5faf5f', bold = true })
+  vim.api.nvim_set_hl(0, 'HlPlugin', { fg = '#af87d7' })
+  vim.api.nvim_set_hl(0, 'HlValue', { fg = '#5fafaf' })
+  vim.api.nvim_set_hl(0, 'HlDim', { fg = '#808080' })
 end
 
 -- Apply highlights to buffer
@@ -356,35 +356,15 @@ local function flatten_entries(cs_data)
   local entries = {}
 
   for _, section in ipairs(cs_data.sections) do
-    if section.type == 'plugins' then
-      for _, entry in ipairs(section.entries) do
-        table.insert(entries, {
-          section = section.name,
-          key = entry.name,
-          desc = entry.desc or '',
-          type = 'plugin',
-        })
-      end
-    elseif section.type == 'settings' then
-      for _, entry in ipairs(section.entries) do
-        table.insert(entries, {
-          section = section.name,
-          key = entry.label,
-          desc = entry.value or '',
-          type = 'setting',
-        })
-      end
-    else
-      for _, entry in ipairs(section.entries) do
-        table.insert(entries, {
-          section = section.name,
-          key = entry.key or '',
-          desc = entry.desc or '',
-          note = entry.note,
-          arrow = entry.arrow,
-          type = 'keybinding',
-        })
-      end
+    for _, entry in ipairs(section.entries) do
+      table.insert(entries, {
+        section = section.name,
+        key = entry.key or '',
+        desc = entry.desc or '',
+        note = entry.note,
+        arrow = entry.arrow,
+        type = section.type or 'keybinding',
+      })
     end
   end
 
