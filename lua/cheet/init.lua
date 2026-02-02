@@ -92,35 +92,50 @@ local function build_header(buf, cs_data)
   buf:add('')
 end
 
-local function build_plugins_section(buf, entries)
-  local col_width = 40
-  for i = 1, #entries, 2 do
-    local e1 = entries[i]
-    local e2 = entries[i + 1]
+local function build_plugins_section(buf, entries, num_columns, key_hl)
+  num_columns = num_columns or 2
+  key_hl = key_hl or 'HlPlugin'
+  local col_width = math.floor((WIDTH - 2) / num_columns)
 
-    local left = string.format('  %-14s %s', e1.key, e1.desc or '')
-    local right = e2 and string.format('%-14s %s', e2.key, e2.desc or '') or ''
+  for i = 1, #entries, num_columns do
+    local line = '  '
+    local highlights = {}
 
-    buf:add(left .. string.rep(' ', col_width - #left) .. right)
-    buf:hl('HlPlugin', 2, 2 + #e1.key)
-    if e2 then
-      buf:hl('HlPlugin', col_width, col_width + #e2.key)
+    for j = 0, num_columns - 1 do
+      local entry = entries[i + j]
+      if entry then
+        local col_start = 2 + j * col_width
+        local text = string.format('%-14s %s', entry.key, entry.desc or '')
+        if j == 0 then
+          line = '  ' .. text .. string.rep(' ', col_width - #text - 2)
+        else
+          line = line .. text .. string.rep(' ', col_width - #text)
+        end
+        table.insert(highlights, { col_start, col_start + #entry.key })
+      end
+    end
+
+    buf:add(line)
+    for _, hl in ipairs(highlights) do
+      buf:hl(key_hl, hl[1], hl[2])
     end
   end
 end
 
-local function build_settings_section(buf, entries)
+local function build_settings_section(buf, entries, num_columns, key_hl)
+  num_columns = num_columns or 3
+  key_hl = key_hl or 'HlValue'
   local parts = {}
   for _, entry in ipairs(entries) do
     table.insert(parts, { key = entry.key, desc = entry.desc })
   end
 
-  for i = 1, #parts, 3 do
+  for i = 1, #parts, num_columns do
     local line_parts = {}
     local col_positions = {}
     local col = 2
 
-    for j = 0, 2 do
+    for j = 0, num_columns - 1 do
       local p = parts[i + j]
       if p then
         local part = p.key .. ': ' .. p.desc
@@ -132,12 +147,13 @@ local function build_settings_section(buf, entries)
 
     buf:add('  ' .. table.concat(line_parts, '    '))
     for _, pos in ipairs(col_positions) do
-      buf:hl('HlValue', pos.value_start, pos.value_start + pos.value_len)
+      buf:hl(key_hl, pos.value_start, pos.value_start + pos.value_len)
     end
   end
 end
 
-local function build_keybindings_section(buf, entries)
+local function build_keybindings_section(buf, entries, key_hl)
+  key_hl = key_hl or 'HlKey'
   for _, entry in ipairs(entries) do
     local key = entry.key or ''
     local desc = entry.desc or ''
@@ -145,12 +161,31 @@ local function build_keybindings_section(buf, entries)
     local note = entry.note and (' ' .. entry.note) or ''
 
     buf:add(string.format('  %-18s    %s%s%s', key, prefix, desc, note))
-    buf:hl('HlKey', 2, 2 + #key)
+    buf:hl(key_hl, 2, 2 + #key)
 
     if entry.note then
       buf:hl('HlDim', buf:last_len() - #entry.note, buf:last_len())
     end
   end
+end
+
+-- Get or create a highlight group for a custom color
+local custom_hl_counter = 0
+local custom_hl_cache = {}
+
+local function get_hl_group(color, bold)
+  if not color then return nil end
+
+  local cache_key = color .. (bold and '_bold' or '')
+  if custom_hl_cache[cache_key] then
+    return custom_hl_cache[cache_key]
+  end
+
+  custom_hl_counter = custom_hl_counter + 1
+  local hl_name = 'CheetCustom' .. custom_hl_counter
+  vim.api.nvim_set_hl(0, hl_name, { fg = color, bold = bold })
+  custom_hl_cache[cache_key] = hl_name
+  return hl_name
 end
 
 -- Build content lines from cheatsheet data
@@ -163,12 +198,14 @@ local function build_content(cs_data)
     local section_header = '--- ' .. section.name .. ' '
     buf:add(section_header .. string.rep('-', WIDTH - #section_header), 'HlSection')
 
+    local key_hl = section.key_color and get_hl_group(section.key_color, true) or nil
+
     if section.type == 'plugins' then
-      build_plugins_section(buf, section.entries)
+      build_plugins_section(buf, section.entries, section.columns, key_hl)
     elseif section.type == 'settings' then
-      build_settings_section(buf, section.entries)
+      build_settings_section(buf, section.entries, section.columns, key_hl)
     else
-      build_keybindings_section(buf, section.entries)
+      build_keybindings_section(buf, section.entries, key_hl)
     end
 
     buf:add('')
